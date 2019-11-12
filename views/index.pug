@@ -1,0 +1,69 @@
+
+extends layout
+
+block content
+  h1= title
+  p Welcome to #{title}
+
+  <form action="/users/login" method="get">
+    <fieldset>
+    <legend>loginUser</legend>
+    <input type="text" name="loginName" value="" id="loginName"/>
+    <input type="password" name="password" value="" />
+    <input type="button" value="提交" onclick="login()"/>
+    </fieldset>
+  </form>
+
+  <form action="/users/regist" method="post">
+    <fieldset>
+    <legend>addUser</legend>
+    <input type="text" name="loginName" value="" />
+    <input type="password" name="password" value="" />
+    <input type="submit" value="提交" />
+    </fieldset>
+  </form>
+
+  <form action="/users/updatePassword" method="post">
+    <fieldset>
+    <legend>updatePassword</legend>
+    <input type="text" name="loginId" value="" />
+    <input type="password" name="password" value="" id="password"/>
+    <input type="button" value="提交" onclick="updatePassword()"/>
+    </fieldset>
+  </form>
+
+  <form action="/users/getUsers" method="get">
+    <fieldset>
+    <legend>getUsers</legend>
+    <input type="submit" value="提交" />
+    </fieldset>
+  </form>
+
+  <form action="/users/updateUser" method="post">
+    <fieldset>
+    <legend>updateUser</legend>
+    <input type="text" name="loginId" placeholder="loginId" value="" />
+    <input type="text" name="loginName" placeholder="loginName" value="" />
+    <input type="text" name="roleId" placeholder="roleId" value="" />
+    <input type="submit" value="提交" />
+    </fieldset>
+  </form>
+
+  <form action="/users/deleteUser" method="get">
+    <fieldset>
+    <legend>deleteUser</legend>
+    <input type="text" name="id" placeholder="id" value="" />
+    <input type="submit" value="提交" />
+    </fieldset>
+  </form>
+
+
+  <form action="/upload" enctype="multipart/form-data" method="post">
+    <fieldset>
+    <legend>upload</legend>
+    <input type="text" name="someName" />
+    <input type="file" name="file" id="fileInput" />
+    <input type="submit" value="提交" />
+    <!--onclick="uploadFile()"-->
+    </fieldset>
+  </form>

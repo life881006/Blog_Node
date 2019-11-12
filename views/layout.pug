@@ -1,0 +1,86 @@
+doctype html
+html
+  head
+    title= title
+    link(rel='stylesheet', href='/stylesheets/style.css')
+    script(src="/javascripts/axios.js")
+    
+
+
+  body
+    block content
+
+  script.
+      
+    axios.interceptors.request.use(config=>{
+      let accessToken ="";
+      if(window.sessionStorage.getItem('user')){
+        accessToken = JSON.parse(window.sessionStorage.getItem('user')).token;
+      }
+      Object.assign(config.headers,{token:accessToken});
+      return config;
+    },error=>{
+      console.log(error);
+    })
+
+    axios.interceptors.response.use(response=>{
+      let data = response.data;
+      if(data.status && data.status==302){
+        alert(data.message);
+        window.location = "http://www.baidu.com";
+        return false;
+      }
+      return response.data;
+    },error=>{
+      console.log(error);
+    })
+    
+    //- 上传附件
+    function uploadFile(){
+      const file = document.querySelector("#fileInput").files[0];
+      if(file){
+        let param = new FormData();
+        param.append('file',file);
+        let config = {headers:{'Content-Type':'multipart/form-data'}};
+        axios.post('/upload',param,config).then(response=>{
+          console.log(response);  
+        });
+      }
+    }
+    
+    //- 登陆
+    function login(){
+      let param = {};
+      param.loginName = document.querySelector("input[name='loginName']").value;
+      param.password = document.querySelector("input[name='password']").value;
+      //- let config = {headers:{'token':'6f4a30bf26237498d57be363c588931d'}};
+      axios.get('/users/login',{params:param}).then(response=>{
+        window.sessionStorage.setItem("user",JSON.stringify(response.info));
+      });
+    }
+
+    //- 更新密码
+    function updatePassword(){
+      let param = {};
+      param.loginId = JSON.parse(window.sessionStorage.getItem("user")).id;
+      param.password = document.querySelector("#password").value;
+      axios.post('/users/updatePassword',param).then(response=>{
+          
+      });
+    }
+
+
+    window.onload = function(){
+      document.querySelector("#loginName").addEventListener("focusout",(e)=>{
+        let param = {};
+        param.loginName = e.target.value;
+        axios.get('/users/checkExistUserName',{params:param}).then(response=>{
+          if(response.status==1){
+            e.target.style.border = "1px solid green";
+          }else{
+            e.target.style.border = "1px solid red";
+          }
+          alert(response.info);
+        })
+      })
+    }
