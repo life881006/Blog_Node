@@ -2,16 +2,24 @@ doctype html
 html
   head
     title= title
-    link(rel='stylesheet', href='/stylesheets/style.css')
-    script(src="/javascripts/axios.js")
-    
+    script(src="/socket.io/socket.io.js")
 
 
   body
     block content
 
   script.
-      
+    var socket = io()
+    socket.on('connection',function(){
+      console.log("已连接")
+    })
+    socket.emit('sendData','dsadsa');
+    socket.on('getServerMessage',function(data){
+
+      document.write(data);
+    })
+    
+    /**
     axios.interceptors.request.use(config=>{
       let accessToken ="";
       if(window.sessionStorage.getItem('user')){
@@ -84,3 +92,4 @@ html
         })
       })
     }
+    **/

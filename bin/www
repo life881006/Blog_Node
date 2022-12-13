@@ -8,6 +8,9 @@ var app = require('../app');
 var debug = require('debug')('demo:server');
 var http = require('http');
 
+
+// app.listen is mapped to app.server.listen, so you can just do:
+
 /**
  * Get port from environment and store in Express.
  */
@@ -25,9 +28,123 @@ var server = http.createServer(app.callback());
  * Listen on provided port, on all network interfaces.
  */
 
-server.listen(port);
+var io = require('socket.io')(server).of("/a")//带有命名空间
+
+// server.listen(port);本地地址
+server.listen(port,'192.168.2.15');//局域网地址
 server.on('error', onError);
 server.on('listening', onListening);
+
+let commitList = new Map();
+let socketMap = new Map();
+let connectUsers = new Map();
+
+io.on('connection',(socket)=>{
+
+  // 用户绑定socket
+  socket.on('bindSocket',(xData)=>{
+    socketMap.set(xData.userId,socket);
+    connectUsers.set(xData.userId,xData);
+    socket.emit("getAllUsers",[...connectUsers.values()]);
+    socket.broadcast.emit("getAllUsers",[...connectUsers.values()]);
+    let filterCommitkeys = [...commitList.keys()].filter(element=>{ return element.indexOf(xData.userId)>0});
+    let UnReadInfos = [];
+    for(let item of filterCommitkeys){
+      let contentList = commitList.get(item).filter(element=>{ return element.isRead==0});
+      let obj = {};
+      obj.infos = contentList;
+      obj.key = item;
+      UnReadInfos.push(obj)
+    }
+    socket.emit("getUnReadInfo",UnReadInfos)
+  })
+
+  // 点对点通信保存数据
+  // 创建一个由发起人和通信人id连接的键值对，保存在map中，两边同时保存通信数据，达到同步显示的目的
+  socket.on('sendData',(data)=>{
+
+    let toSocket = socketMap.get(data.toUserId);
+    if(!toSocket){
+      return false;
+    }
+    let thisSocket = socketMap.get(data.userId);
+    let toDialog = data.userId +"-"+ data.toUserId;
+    let reserveDialog = data.toUserId +"-"+ data.userId;
+    let toInfoObj = {userId:data.userId,toUserId:data.toUserId,data:data.data,createTime:new Date().getTime()};
+    let reserveInfoObj = {userId:data.userId,toUserId:data.toUserId,data:data.data,createTime:new Date().getTime()};
+    if(!commitList.get(toDialog)){
+      toInfoObj.isRead = 0;
+      commitList.set(toDialog,[].concat([toInfoObj]));
+    }else{
+      toInfoObj.isRead = 0;
+      commitList.get(toDialog).push(toInfoObj);
+    }
+    if(!commitList.get(reserveDialog)){
+      reserveInfoObj.isRead = 0;
+      commitList.set(reserveDialog,[].concat([reserveInfoObj]));
+    }else{
+      reserveInfoObj.isRead = 0;
+      commitList.get(reserveDialog).push(reserveInfoObj);
+    }
+    // socket.emit('getServerMessage',socketMap.get(socket.id));
+    thisSocket.emit('getServerMessage',commitList.get(reserveDialog));
+    toSocket.emit('getServerMessage',commitList.get(toDialog));
+    let filterCommitkeys = [...commitList.keys()].filter(element=>{ return element.indexOf(data.toUserId)>0});
+    let UnReadInfos = [];
+    for(let item of filterCommitkeys){
+      let contentList = commitList.get(item).filter(element=>{ return element.isRead==0});
+      let obj = {};
+      obj.infos = contentList;
+      obj.key = item;
+      UnReadInfos.push(obj)
+    }
+    // 给对方更新未读信息
+    toSocket.emit("getUnReadInfo",UnReadInfos)
+    // socket.broadcast.emit('getServerMessage',commitList);
+  })
+
+  // 更新是否已读信息
+  socket.on('updateReadInfo',(data)=>{
+    let list = commitList.get(data.userId+"-"+data.toUserId);
+    if(list && list.size!=0){
+      list.map(element=>{
+        element.isRead = 1
+        return element
+      })
+      // 获取自己连接的socket，更新我发给对方的信息状态
+      socketMap.get(data.toUserId).emit("getServerMessage",list);
+      let filterCommitkeys = [...commitList.keys()].filter(element=>{ return element.indexOf(data.userId)>0});
+      let UnReadInfos = [];
+      for(let item of filterCommitkeys){
+        
+        let contentList = commitList.get(item);
+        if(item===(data.userId+"-"+data.toUserId)){
+          contentList = [];
+        }
+        let obj = {};
+        obj.infos = contentList;
+        obj.key = item;
+        UnReadInfos.push(obj);
+      }
+      // 获取自己连接的socket，清空对方发送给我的未读信息
+      socketMap.get(data.userId).emit("getUnReadInfo",UnReadInfos)
+    }
+  })
+
+  // 断开连接
+  socket.on('disconnect', ()=>{
+    socketMap.forEach((element,index)=>{
+      if(element.id == socket.id){
+        connectUsers.delete(index);
+      }
+    })
+    socket.emit("getAllUsers",[...connectUsers.values()]);
+    socket.broadcast.emit("getAllUsers",[...connectUsers.values()]);
+    // 断开时取出聊天记录，存入redis？
+
+  })
+})
+
 
 /**
  * Normalize a port into a number, string, or false.

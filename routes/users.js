@@ -28,7 +28,7 @@ router.get('/getCheckCode',async (ctx,nexx)=>{
    * redis设置验证码
    */
   let code = getCheckCode();
-  ctx.body = code;
+  ctx.body = { status: 1, data: code };
 })
 
 /**
@@ -38,11 +38,11 @@ router.get('/checkExistUserName', async (ctx,next)=>{
   let loginName = ctx.query.loginName;
   let sql = "select * from user where loginName = ?";
   let param = [loginName];
-  const res = await db.excuteSql(sql,param);
+  const res = await db.executeSql(sql,param);
   if(res.length==0){
-    ctx.body = {status:1,info:"可注册"};
+    ctx.body = {status:1, data:"可注册"};
   }else{
-    ctx.body = {status:2,info:"用户名已存在"};
+    ctx.body = {status:1, data:"用户名已存在"};
   }
 })
 
@@ -57,7 +57,7 @@ router.post('/regist', async function (ctx, next) {
   const redisCheckCode = await getRedisCheckCode(checkCodeId);
 
   if(redisCheckCode!=checkCode.toUpperCase()){
-    ctx.body = {status:5,info:"验证码错误"};
+    ctx.body = {status:5, msg:"验证码错误"};
     return false;
   }
 
@@ -69,10 +69,10 @@ router.post('/regist', async function (ctx, next) {
     nickName:nickName
   };
 
-  let isExist = await db.excuteSql("select id from user where loginName = ?",[loginName]);//检查用户名
+  let isExist = await db.executeSql("select id from user where loginName = ?",[loginName]);//检查用户名
 
   if(isExist.length!=0){
-    ctx.body = {status:6,info:"账号已存在，请重新填写"};
+    ctx.body = {status:6, msg:"账号已存在，请重新填写"};
     return false;
   }
 
@@ -81,14 +81,15 @@ router.post('/regist', async function (ctx, next) {
   resUser.id = res;
   resUser.nickName = nickName;
   resUser.loginName = loginName;
-  ctx.body = resUser;
+  ctx.body = {status: 1, data: resUser};
 
   let userInfoObj = {
     name:nickName,
     userId:res,
     phoneNumber:"",
     gender:0,
-    birthday:""
+    birthday:"",
+    hobbies:""
   }
   db.add(userInfoObj,"userInfo");
 })
@@ -100,49 +101,92 @@ router.get('/login',async (ctx,next)=>{
   
   let {loginName,password} = ctx.query;
 
-  let sql = "select id,loginName,nickName,status,token from user where loginName = ? and password = ?";
+  let sql = "select a.id,a.loginName,a.nickName,a.status,a.token,a.photo,b.name,b.gender,b.birthday,b.phoneNumber,b.hobbies from user as a left join userInfo as b on a.id = b.userId where a.loginName = ? and a.password = ?";
   let params = [loginName,md5Password(password)];
 
-  const res = await db.excuteSql(sql,params);
+  const res = await db.executeSql(sql,params);
   
   if(res.length==0){
-    ctx.body = {status:2,info:"账号或密码错误"};
+    ctx.body = {status:2, msg:"账号或密码错误"};
     return false;
   }
   if(res[0].status==1){
-    ctx.body = {status:3,info:"账号已冻结，请联系管理员"};
+    ctx.body = {status:3, msg:"账号已冻结，请联系管理员"};
     return false;
   }else if(res[0].status==2){
-    ctx.body = {status:4,info:"账号已注销，请联系管理员"};
+    ctx.body = {status:4, msg:"账号已注销，请联系管理员"};
     return false;
   }else{
+    const friendsSql = `select a.*,b.nickName from friends as a left join user as b on a.friendUserId = b.id where a.userId = ?`;
+    params = [res[0].id];
+    let friends = await db.executeSql(friendsSql,params);
     let newToken = md5Token();
     res[0].token = newToken;
-    const newLoginUser = await db.update(res[0],"user");
-    const resUser = {};
-    resUser.id = newLoginUser.id;
-    resUser.nickName = newLoginUser.nickName;
-    resUser.loginName = newLoginUser.loginName;
 
-    ctx.body = {status:1,info:resUser};
+    const updateTokenSql = `update user set token = ? where id = ?`;
+    params = [newToken,res[0].id];
+    db.executeSql(updateTokenSql,params);
+    
+    const resUser = {};
+    resUser.id = res[0].id;
+    resUser.nickName = res[0].nickName;
+    resUser.photo = res[0].photo;
+    resUser.name = res[0].name;
+    resUser.gender = res[0].gender==0?"女":"男";
+    resUser.birthday = res[0].birthday;
+    resUser.phoneNumber = res[0].phoneNumber;
+    resUser.hobbies = res[0].hobbies;
+    resUser.token = newToken;
+    
+    resUser.friends = friends;
+
+    ctx.body = {status:1, data:resUser};
   }
 });
+
+router.get('/logout', async function (ctx, next) {
+  const userId = ctx.query.userId;
+  const updateObj = {};
+  updateObj.id = userId;
+  updateObj.status = 3;
+  updateObj.token = '';
+  const res = await db.update(updateObj, 'user');
+
+  if (res === 0) {
+    ctx.body = {status: 5, msg: "账号不存在"};
+    return false;
+  }
+  
+  ctx.body = {status: 1, data: "账号已退出"};
+})
 
 /**
  * 获取全部用户列表 
  */
 router.get('/getUsers', async function (ctx, next) {
-  const res = await db.excuteSql("select * from user",[])
+  const res = await db.executeSql("select a.id,a.nickName,a.photo,a.status,b.name,b.gender,b.birthday,b.hobbies from user as a left join userInfo as b on a.id = b.userId",[])
   ctx.body = res;
+})
+
+/**
+ * 获取单个用户
+ */
+router.get('/getUser',async (ctx,next)=>{
+  const userId = ctx.query.userId;
+  const sql = "select a.id,a.nickName,a.photo,b.name,b.phoneNumber,b.gender,b.birthday,b.hobbies from user as a left join userInfo as b on a.id = b.userId where a.id = ?";
+  const values = [userId];
+  const res = await db.executeSql(sql,values);
+  ctx.body = res[0];
 })
 
 /**
  * 更新用户信息 
  */
 router.post('/updateUser', async (ctx,next)=>{
-  let {loginId,nickName,photo="",name,phoneNumber,gender,birthday} = ctx.request.body;
+  let {id,nickName,photo="",name,phoneNumber,gender,birthday,hobbies} = ctx.request.body;
+
   const userObj = {};
-  userObj.id = loginId;
+  userObj.id = id;
   userObj.nickName = nickName;
   userObj.photo = photo;
   
@@ -153,9 +197,9 @@ router.post('/updateUser', async (ctx,next)=>{
     return false;
   }
 
-  const sql = `update userInfo set name = ?,phoneNumber = ?,gender = ?,birthday = ? where userId = ${loginId}`;
-  const params = [name,phoneNumber,gender,birthday];
-  const res1 = await db.excuteSql(sql,params);
+  const sql = `update userInfo set name = ?,phoneNumber = ?,gender = ?,birthday = ?,hobbies = ? where userId = ?`;
+  const params = [name,phoneNumber,gender,birthday,hobbies,id];
+  const res1 = await db.executeSql(sql,params);
   ctx.body = "修改成功";
 });
 
@@ -194,6 +238,33 @@ router.post('/updatePassword',async (ctx,next)=>{
 });
 
 /**
+ * 获取全部兴趣爱好
+ */
+router.get('/getAllHobbies',async (ctx,next)=>{
+  const sql = "select a.id,a.name as sortName,b.name as hobbiesName from hobbySort as a left join hobbies as b on a.id = b.sortId where a.isDeleted = 0 and b.isDeleted = 0";
+  const res = await db.executeSql(sql,[]);
+  
+  let newArr = [];
+  let flagName = "";
+  res.map(element=>{
+    if(element.sortName != flagName){
+      flagName = element.sortName;
+      let obj = {};
+      obj.name = element.sortName;
+      obj.array = [];
+      newArr[element.id] = obj;
+    }
+    newArr[element.id].array.push(element.hobbiesName);
+  })
+  
+  let formatArr = [];
+  newArr.map(element=>{
+    formatArr.push(element);
+  })
+  ctx.body = formatArr;
+});
+
+/**
  * 加密密码
  * @param {String} str 
  */
@@ -225,7 +296,7 @@ function getCheckCode(){
   }
   client.set(uuidStr,codeStr,redis.print);
   checkCode.id = uuidStr;
-  checkCode.number = codeStr;
+  checkCode.code = codeStr;
   return checkCode;
 }
 

@@ -3,29 +3,31 @@ const uuid = require("uuid/v4");
 
 const connection = mysql.createPool({
     host: "localhost",
-    user: "root",
+    user: "admin",
     password: "123456",
-    database: "weib",
+    database: "blog",
     multipleStatements: true,
     timezone:'08:00',
 })
 
 const db = {
-    excuteSql: (sql,params=[]) => {
+    executeSql: (sql,params=[]) => {
         return new Promise((resolve, reject) => {
-            
+        
             connection.query(sql, params, (err, result, fields) => {
                 if (err) reject(err);
                 if (result instanceof Object){
                     resolve(result);
                     return false;
                 }
+                if(result){
                 result.map(element => {
                     for(let i in element){
                         element[i] = element[i]==null?"":element[i];//过滤数据库null字段
                     }
                     return element
                 });
+                }
                 resolve(result);
             });
         });
@@ -73,8 +75,7 @@ const db = {
             })} where id = '${updateObj.id}'`;
             connection.query(sql, values, (err, result, fields) => {
                 if (err) reject(err);
-
-                if (result.affectedRows === 0) {
+                if (result.affectedRows === 0 && result) {
                     resolve(0);
                     return false;
                 }
